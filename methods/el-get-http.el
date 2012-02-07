@@ -13,6 +13,7 @@
 ;;     Please see the README.asciidoc file from the same distribution
 
 (require 'el-get-core)
+(require 'el-get)
 (require 'sha1)
 
 (defcustom el-get-http-install-hook nil
@@ -70,13 +71,29 @@ into the package :localname option or its `file-name-nondirectory' part."
     (unless (file-directory-p pdir)
       (make-directory pdir))
 
-    (if (not el-get-default-process-sync)
-        (url-retrieve url 'el-get-http-retrieve-callback
-                      `(,package ,post-install-fun ,dest ,el-get-sources))
+    (if el-get-use-wget
+        ;; download with wget
+        (el-get-start-process-list
+         package
+         `((:command-name ,(el-get-as-string package)
+                          :buffer-name ,(el-get-as-string package)
+                          :default-directory ,el-get-dir
+                          :program ,el-get-wget-command
+                          :args ("-O" ;; ,(concat "/dev/shm/" package)
+                                 ,dest
+                                 ,url)
+                          :sync ,el-get-default-process-sync
+                          :message "download ok"
+                          :error "download failed"))
+         post-install-fun)
 
-      (with-current-buffer (url-retrieve-synchronously url)
-        (el-get-http-retrieve-callback
-	 nil package post-install-fun dest el-get-sources)))))
+      (if (not el-get-default-process-sync)
+          (url-retrieve url 'el-get-http-retrieve-callback
+                        `(,package ,post-install-fun ,dest ,el-get-sources))
+
+        (with-current-buffer (url-retrieve-synchronously url)
+          (el-get-http-retrieve-callback
+           nil package post-install-fun dest el-get-sources))))))
 
 (defun el-get-http-compute-checksum (package)
   "Look up download time SHA1 of PACKAGE."

@@ -180,6 +180,10 @@
 
 (defvar el-get-build-with-depends nil)
 
+(defvar el-get-use-wget nil)
+
+(defvar el-get-wget-command "wget")
+
 ;;
 ;; Now load the rest of the el-get code
 ;;
