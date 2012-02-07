@@ -14,6 +14,8 @@
 
 (require 'cl)				; yes I like loop
 (require 'bytecomp)
+(require 'el-get-dependencies)
+(require 'el-get-core)
 
 ;; byte-recompile-file:
 ;;
@@ -109,6 +111,10 @@ it."
 	       "-Q" "-batch" "-f" "toggle-debug-on-error"
 	       "-l" (file-name-sans-extension
                      (symbol-file 'el-get-byte-compile-from-stdin 'defun))
+         "--eval" (format "%S"
+                          (when el-get-build-with-depends
+                            `(mapc (lambda (x) (add-to-list 'load-path x))
+                                   ',(el-get-dependencies-load-path package))))
 	       "-f" "el-get-byte-compile-from-stdin")))
     `(:command-name "byte-compile"
 		    :buffer-name ,buffer

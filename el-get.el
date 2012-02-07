@@ -178,6 +178,8 @@
 (defvar el-get-emacs (concat invocation-directory invocation-name)
   "Where to find the currently running emacs, a facility for :build commands")
 
+(defvar el-get-build-with-depends nil)
+
 ;;
 ;; Now load the rest of the el-get code
 ;;

@@ -39,6 +39,12 @@
     (append (list (append (list package) alldeps))
 	    (loop for p in pdeps append (el-get-dependencies-graph p)))))
 
+
+(defun el-get-dependencies-load-path (package)
+  (el-get-flatten
+   (mapcar #'el-get-load-path
+           (el-get-dependencies (el-get-as-symbol package)))))
+
 ;;
 ;; topological sort, see
 ;; http://rosettacode.org/wiki/Topological_sort#Common_Lisp
