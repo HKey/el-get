@@ -13,7 +13,6 @@
 ;;     Please see the README.asciidoc file from the same distribution
 
 (require 'el-get-core)
-(require 'el-get)
 (require 'sha1)
 
 (defcustom el-get-http-install-hook nil
@@ -79,9 +78,7 @@ into the package :localname option or its `file-name-nondirectory' part."
                           :buffer-name ,(el-get-as-string package)
                           :default-directory ,el-get-dir
                           :program ,el-get-wget-command
-                          :args ("-O" ;; ,(concat "/dev/shm/" package)
-                                 ,dest
-                                 ,url)
+                          :args ("-O" ,dest ,url)
                           :sync ,el-get-default-process-sync
                           :message "download ok"
                           :error "download failed"))
