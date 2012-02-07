@@ -14,8 +14,8 @@
 
 (require 'cl)				; yes I like loop
 (require 'bytecomp)
-(require 'el-get-dependencies)
-(require 'el-get-core)
+(require 'el-get-dependencies nil t)
+(require 'el-get-core nil t)
 
 ;; byte-recompile-file:
 ;;
