@@ -47,6 +47,10 @@
 ;;   - add support for el-get-reload and do that at update time
 ;;   - implement :checksum property for http kinds of files
 ;;   - Add new command el-get-reinstall
+;;   - implement :checkout property for git packages
+;;   - implement :shallow property for git packages
+;;   - add support for auto-building of ELPA recipes
+;;   - implement :submodule property for git packages (allow bypassing them)
 ;;
 ;;  3.1 - 2011-09-15 - Get a fix
 ;;
@@ -289,7 +293,16 @@ force their evaluation on some packages only."
 (defun el-get-version ()
   "Message the current el-get version"
   (interactive)
-  (message "el-get version %s" el-get-version))
+  (let ((version
+	 (if (string= (cadr (split-string el-get-version "\\.")) "0")
+	     ;; devel version, add the current git sha1 (short form)
+	     (let ((default-directory (file-name-directory el-get-script)))
+	       (concat el-get-version "."
+		       (shell-command-to-string
+			"git --no-pager log -n1 --format=format:%h")))
+	   el-get-version)))
+    (kill-new version)
+    (message "el-get version %s" version)))
 
 (defun el-get-read-all-recipe-names ()
   "Return the list of all known recipe names.
@@ -379,7 +392,8 @@ called by `el-get' (usually at startup) for each installed package."
              (after    (plist-get source :after))
              (pkgname  (plist-get source :pkgname))
              (library  (or (plist-get source :library) pkgname package))
-             (pdir     (el-get-package-directory package)))
+             (pdir     (el-get-package-directory package))
+             (default-directory pdir))
 
 	;; a builtin package initialisation is about calling recipe and user
 	;; code only, no load-path nor byte-compiling support needed here.

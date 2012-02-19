@@ -19,6 +19,11 @@
   :group 'el-get
   :type 'hook)
 
+(defcustom el-get-git-shallow-clone nil
+  "If t, then run git-clone with `--depth 1'."
+  :group 'el-get
+  :type 'boolean)
+
 (defun el-get-git-executable ()
   "Return git executable to use, or signal an error when not
 found."
@@ -40,9 +45,27 @@ found."
 	 (name   (format "*git clone %s*" package))
 	 (source (el-get-package-def package))
 	 (branch (plist-get source :branch))
-	 (args   (if branch
-		     (list "--no-pager" "clone" "-b" branch url pname)
-		   (list "--no-pager" "clone" url pname)))
+         (submodule-prop (plist-get source :submodule))
+         ;; nosubmodule is true only if :submodules  is explicitly set to nil.
+         (explicit-nosubmodule (and (plist-member source :submodule)
+                                    (not submodule-prop)))
+         (checkout (or (plist-get source :checkout)
+		       (plist-get source :checksum)))
+         (shallow (if (plist-member source :shallow)
+                      (plist-get source :shallow)
+                    el-get-git-shallow-clone))
+	 (clone-args (append '("--no-pager" "clone")
+                             (when shallow '("--depth" "1"))
+			     (cond
+			      ;; With :checkout, the "git checkout"
+			      ;; command is a separate step, so don't
+			      ;; do it during cloning.
+			      (checkout '("--no-checkout"))
+			      ;; With a specified branch, check that branch out
+			      (branch (list "-b" branch))
+			      ;; Otherwise, just checkout the default branch
+			      (t nil))
+			     (list url pname)))
 	 (ok     (format "Package %s installed." package))
 	 (ko     (format "Could not install package %s." package)))
     (el-get-start-process-list
@@ -51,16 +74,25 @@ found."
 		      :buffer-name ,name
 		      :default-directory ,el-get-dir
 		      :program ,git-executable
-		      :args ,args
+		      :args ,clone-args
 		      :message ,ok
 		      :error ,ko)
-       (:command-name "*git submodule update*"
-		      :buffer-name ,name
-		      :default-directory ,pdir
-		      :program ,git-executable
-		      :args ("--no-pager" "submodule" "update" "--init" "--recursive")
-		      :message "git submodule update ok"
-		      :error "Could not update git submodules"))
+       ,(when checkout
+	  (list :command-name (format "*git checkout %s*" checkout)
+		:buffer-name name
+		:default-directory pdir
+		:program git-executable
+		:args (list "--no-pager" "checkout" checkout)
+		:message (format "git checkout %s ok" checkout)
+		:error (format "Could not checkout %s for package %s" checkout package)))
+       ,(unless explicit-nosubmodule
+	  `(:command-name "*git submodule update*"
+			  :buffer-name ,name
+			  :default-directory ,pdir
+			  :program ,git-executable
+			  :args ("--no-pager" "submodule" "update" "--init" "--recursive")
+			  :message "git submodule update ok"
+			  :error "Could not update git submodules")))
      post-install-fun)))
 
 (defun el-get-git-pull (package url post-update-fun)
@@ -68,25 +100,43 @@ found."
   (let* ((git-executable (el-get-executable-find "git"))
 	 (pdir (el-get-package-directory package))
 	 (name (format "*git pull %s*" package))
+	 (source (el-get-package-def package))
+         (submodule-prop (plist-get source :submodule))
+         ;; nosubmodule is true only if :submodules  is explicitly set to nil.
+         (explicit-nosubmodule (and (plist-member source :submodule)
+                                     (not submodule-prop)))
+         (checkout (or (plist-get source :checkout)
+		       (plist-get source :checksum)))
+	 ;; When dealing with a specific checkout, we cannot use
+	 ;; "pull", but must instead use "fetch" and then "checkout".
+	 (pull-args (list "--no-pager" (if checkout "fetch" "pull")))
 	 (ok   (format "Pulled package %s." package))
 	 (ko   (format "Could not update package %s." package)))
-
     (el-get-start-process-list
      package
      `((:command-name ,name
 		      :buffer-name ,name
 		      :default-directory ,pdir
 		      :program ,git-executable
-		      :args ( "--no-pager" "pull")
+		      :args ,pull-args
 		      :message ,ok
 		      :error ,ko)
-       (:command-name "*git submodule update*"
+       ,(when checkout
+	  (list :command-name (format "*git checkout %s*" checkout)
+		:buffer-name name
+		:default-directory pdir
+		:program git-executable
+		:args (list "--no-pager" "checkout" checkout)
+		:message (format "git checkout %s ok" checkout)
+		:error (format "Could not checkout %s for package %s" checkout package)))
+       ,(unless explicit-nosubmodule
+	  `(:command-name "*git submodule update*"
 		      :buffer-name ,name
 		      :default-directory ,pdir
 		      :program ,git-executable
 		      :args ("--no-pager" "submodule" "update" "--init" "--recursive")
 		      :message "git submodule update ok"
-		      :error "Could not update git submodules"))
+		      :error "Could not update git submodules")))
      post-update-fun)))
 
 (defun el-get-git-compute-checksum (package)
