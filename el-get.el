@@ -54,6 +54,7 @@
 ;;   - New package types: github, emacsmirror
 ;;   - Support for installing CVS packages through non-transparent
 ;;     http proxy servers
+;;   - `el-get-update-all' now prompts before updating packages
 ;;
 ;;  3.1 - 2011-09-15 - Get a fix
 ;;
@@ -701,10 +702,13 @@ PACKAGE may be either a string or the corresponding symbol."
       (message "el-get update %s" package))))
 
 ;;;###autoload
-(defun el-get-update-all ()
+(defun el-get-update-all (&optional no-prompt)
   "Performs update of all installed packages."
   (interactive)
-  (mapc 'el-get-update (el-get-list-package-names-with-status "installed")))
+  (when (or no-prompt
+            (yes-or-no-p
+             "Do you really want to update all installed packages?"))
+    (mapc 'el-get-update (el-get-list-package-names-with-status "installed"))))
 
 ;;;###autoload
 (defun el-get-self-update ()
@@ -792,7 +796,8 @@ entry which is not a symbol and is not already a known recipe."
       (let ((checksum (funcall compute-checksum package)))
         (message "Checksum for package %s is: %s. It has been copied to the kill-ring."
                  package checksum)
-        (kill-new checksum)))))
+        (kill-new checksum)
+        checksum))))
 
 (defun el-get-self-checksum ()
   "Compute the checksum of the running version of el-get itself.
