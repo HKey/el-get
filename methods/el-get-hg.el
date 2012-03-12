@@ -25,8 +25,10 @@
 	 (pdir  (el-get-package-directory package))
 	 (pname (el-get-as-string package))
 	 (name  (format "*hg clone %s*" package))
+         (branch   (plist-get source :branch))
          (checkout (or (plist-get source :checkout)
-                       (plist-get source :checksum)))
+                       (plist-get source :checksum)
+                       (plist-get source :branch)))
          (clone-args (append '("clone")
                              (when checkout (list "--updaterev" checkout))
                              (list url pname)))
@@ -49,6 +51,8 @@
   (let* ((hg-executable (el-get-executable-find "hg"))
 	 (pdir (el-get-package-directory package))
 	 (name (format "*hg pull %s*" package))
+         ;; Don't put :branch here, because by default `hg update'
+         ;; updates to tip of current branch.
          (checkout (or (plist-get source :checkout)
                        (plist-get source :checksum)))
 	 (ok   (format "Pulled package %s." package))
@@ -78,12 +82,9 @@
   "Return the hash of the checked-out revision of PACKAGE."
   (with-temp-buffer
     (cd (el-get-package-directory package))
-    (let* ((args '("hg" "id" "--id"))
+    (let* ((args '("hg" "log" "--rev" "." "--template" "{node}"))
            (cmd (mapconcat 'shell-quote-argument args " "))
-           (output (shell-command-to-string cmd))
-           ;; strip tailing "+" if exists
-           (hash (and (string-match "^\\([0-9A-Fa-f]+\\)" output)
-                      (match-string 0 output))))
+           (hash (shell-command-to-string cmd)))
       hash)))
 
 (el-get-register-method :hg
