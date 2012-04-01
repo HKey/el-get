@@ -809,7 +809,7 @@ itself.")
   ;; everything, but it's better than nothing.
   (let ((fallback-source
          (or (ignore-errors (el-get-package-def package))
-             (list :name package :type builtin))))
+             (list :name package :type 'builtin))))
     (el-get-with-status-sources
      (let* ((source   (or (ignore-errors (el-get-package-def package))
                           fallback-source))
@@ -848,7 +848,7 @@ itself.")
     ;; Filepath is dir/file
     (let ((filepath (format "%s/%s" dir filename)))
       (with-temp-file filepath
-	(insert (prin1-to-string source))))))
+	(insert (el-get-print-to-string source))))))
 
 ;;;###autoload
 (defun el-get-make-recipes (&optional dir)
