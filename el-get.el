@@ -541,20 +541,11 @@ dependencies (if any).
 
 PACKAGE may be either a string or the corresponding symbol."
   (interactive (list (el-get-read-package-name "Install")))
-  (let ((packages  (el-get-dependencies (el-get-as-symbol package))))
-    (when (cdr packages)
-      ;; tweak el-get-post-install-hooks to install remaining packages
-      ;; once the first is installed
-      (el-get-verbose-message "el-get-install %s: %S" package packages)
-      (setq el-get-next-packages (cdr packages))
-      (add-hook 'el-get-post-init-hooks 'el-get-install-next-packages))
-
-    (let ((package (car packages)))
-      (if (not (el-get-package-is-installed package))
-	  (el-get-do-install package)
-	;; if package is already installed, skip to the next
-	(message "el-get: `%s' package is already installed" package)
-	(el-get-init package)))))
+  (setq el-get-next-packages (el-get-dependencies (el-get-as-symbol package)))
+  (el-get-verbose-message "el-get-install %s: %S" package el-get-next-packages)
+  (add-hook 'el-get-post-init-hooks 'el-get-install-next-packages)
+  ;; Start the chain of dependency installation
+  (el-get-install-next-packages))
 
 (defun el-get-install-next-packages (&rest ignored)
   "Run as part of `el-get-post-init-hooks' when dealing with dependencies."
@@ -610,7 +601,9 @@ PACKAGE may be either a string or the corresponding symbol."
   "Install any PACKAGE for which you have a recipe."
   (el-get-error-unless-package-p package)
   (if (el-get-package-is-installed package)
-      (el-get-init package)
+      (progn
+        (el-get-verbose-message "el-get: `%s' package is already installed" package)
+        (el-get-init package))
     (let* ((status   (el-get-read-package-status package))
 	   (source   (el-get-package-def package))
 	   (method   (el-get-package-method source))
@@ -638,7 +631,7 @@ PACKAGE may be either a string or the corresponding symbol."
 (defun el-get-reload (package)
   "Reload PACKAGE."
   (interactive
-   (list (el-get-read-package-with-status "Update" "installed")))
+   (list (el-get-read-package-with-status "Reload" "installed")))
   (el-get-verbose-message "el-get-reload: %s" package)
   (el-get-with-status-sources
    (let* ((all-features features)
@@ -780,7 +773,23 @@ itself.")
   (when (or no-prompt
             (yes-or-no-p
              "Do you really want to update all installed packages?"))
-    (mapc 'el-get-update (el-get-list-package-names-with-status "installed"))))
+    ;; The let and flet forms here ensure that
+    ;; `package-refresh-contents' is only called once, regardless of
+    ;; how many ELPA-type packages need to be installed. Without this,
+    ;; a refresh would happen for every ELPA package, which is totally
+    ;; unnecessary when updating them all at once.
+    (let ((refreshed nil)
+          (orig-package-refresh-contents
+           (ignore-errors (symbol-function 'package-refresh-contents))))
+      (flet ((package-refresh-contents
+              ;; This is the only way to get sane auto-indentation
+              (cdr (lambda (&rest args)
+                     (unless refreshed
+                       (apply orig-package-refresh-contents args)
+                       (setq refreshed t))))))
+        ;; This is the only line that really matters
+        (mapc 'el-get-update (el-get-list-package-names-with-status "installed"))))))
+
 
 ;;;###autoload
 (defun el-get-self-update ()
