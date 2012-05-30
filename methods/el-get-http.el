@@ -72,17 +72,22 @@ into the package :localname option or its `file-name-nondirectory' part."
 
     (if el-get-use-wget
         ;; download with wget
-        (el-get-start-process-list
-         package
-         `((:command-name ,(el-get-as-string package)
-                          :buffer-name ,(el-get-as-string package)
-                          :default-directory ,el-get-dir
-                          :program ,el-get-wget-command
-                          :args ("-O" ,dest ,url)
-                          :sync ,el-get-default-process-sync
-                          :message "download ok"
-                          :error "download failed"))
-         post-install-fun)
+        (apply 'el-get-start-process-list
+               `(,package
+                 ((:command-name ,(el-get-as-string package)
+                                 :buffer-name ,(el-get-as-string package)
+                                 :default-directory ,el-get-dir
+                                 :program ,el-get-wget-command
+                                 :args ("-O" ,dest ,url)
+                                 :sync ,el-get-default-process-sync
+                                 :message "download ok"
+                                 :error "download failed"))
+                 (lambda (package)
+                   (with-temp-buffer
+                     (insert-file-contents ,dest)
+                     (puthash package (sha1 (current-buffer))
+                              el-get-http-checksums))
+                   (funcall ',post-install-fun package))))
 
       (if (not el-get-default-process-sync)
           (url-retrieve url 'el-get-http-retrieve-callback
