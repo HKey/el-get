@@ -281,6 +281,23 @@ force their evaluation on some packages only."
   :group 'el-get
   :type 'boolean)
 
+(defcustom el-get-auto-update-cached-recipes t
+  "When non-nil, auto-update certain properties in cached recipes.
+
+When El-get installs a package, it stores a copy of the package's
+recipe that becomes independent from the recipe in
+`el-get-sources'. The cached copy is updated only when the
+package itself is updated or reinstalled. However, if this
+preference is t (the default), select properties of the cached
+recipe copy will be updated from `el-get-sources' whenever the
+package is initialized (see
+`el-get-status-recipe-updatable-properties').
+
+If this is set to nil, then the cached copy will *only* be
+updated when the package itself is."
+  :group 'el-get
+  :type 'boolean)
+
 (defvar el-get-next-packages nil
   "List of packages to install next, used when dealing with dependencies.")
 
@@ -444,10 +461,13 @@ Add PACKAGE's directory (or `:load-path' if specified) to the
 `load-path', add any its `:info' directory to
 `Info-directory-list', and `require' its `:features'.  Will be
 called by `el-get' (usually at startup) for each installed package."
-  (interactive (list (el-get-read-package-name "Init")))
+  (interactive (list (el-get-read-package-with-status "Init" "installed")))
   (el-get-verbose-message "el-get-init: %s" package)
+  (when el-get-auto-update-cached-recipes
+    (el-get-merge-properties-into-status package package-status-alist :noerror t))
   (condition-case err
-      (let* ((source
+      (let* ((el-get-sources (el-get-package-status-recipes))
+             (source
               (el-get-read-package-status-recipe package package-status-alist))
              (method   (el-get-package-method source))
              (loads    (el-get-as-list (plist-get source :load)))
@@ -526,15 +546,14 @@ called by `el-get' (usually at startup) for each installed package."
                    postinit "post-init" package)
           (funcall maybe-lazy-eval `(el-get-load-package-user-init-file ',package))
           (funcall el-get-maybe-lazy-runsupp
-                   after "after" package))
-
-        ;; and call the global init hooks
-        (run-hook-with-args 'el-get-post-init-hooks package)
-
-        ;; return the package
-        package)
+                   after "after" package)))
     (debug error
-     (el-get-installation-failed package err))))
+     (el-get-installation-failed package err)))
+    ;; and call the global init hooks
+  (run-hook-with-args 'el-get-post-init-hooks package)
+
+  ;; return the package
+  package)
 
 
 (defun el-get-install (package)
@@ -632,52 +651,52 @@ PACKAGE may be either a string or the corresponding symbol."
       (funcall install package url 'el-get-post-install)
       (message "el-get install %s" package))))
 
-(defun el-get-reload (package)
+(defun el-get-reload (package &optional package-status-alist)
   "Reload PACKAGE."
   (interactive
    (list (el-get-read-package-with-status "Reload" "installed")))
   (el-get-verbose-message "el-get-reload: %s" package)
-  (el-get-with-status-sources
-   (let* ((all-features features)
-          (package-features (el-get-package-features package))
-          (package-files (el-get-package-files package))
-          (other-features
-           (remove-if (lambda (x) (memq x package-features)) all-features)))
-     (unwind-protect
-         (progn
-           ;; We cannot let-bind `features' here, becauses the changes
-           ;; made by `el-get-init' must persist.
-           (setq features other-features)
-           ;; Reload all loaded files in package dir if they still
-           ;; exist.
-           (loop for file in package-files
-                 ;; We convert errors to warnings here, because some
-                 ;; files don't like being loaded more than once in a
-                 ;; session. Example: "cedet-remove-builtin.el" from
-                 ;; CEDET.
-                 do (condition-case e
-                        (load file 'noerror)
-                      (error (warn "Error while reloading file %s in package %s: %S\n\n This package may require a restart of emacs to complete the update process."
-                                   file package (cdr e)))))
-           ;; Redo package initialization
-           (el-get-init package)
-           ;; Reload all features provided by the package. This ensures
-           ;; that autoloaded packages (which normally don't load
-           ;; anything until one of their entry points is called) are
-           ;; forced to reload immediately if they were already loaded.
-           (loop for f in package-features
-                 do (require f nil 'noerror)))
-       ;; We have to add all the removed features back in no matter
-       ;; what, or else we would be lying about what has been loaded.
-       ;; This covers the corner case where an updated package no
-       ;; longer provides a certain feature. Technically that feature
-       ;; is still provided, so not adding it back would be wrong.
-       (let ((missing-features
-              (remove-if (lambda (x) (memq x features)) package-features)))
-         (when missing-features
-           (warn "Adding %S back onto features, because the reloaded package did not provide them."
-                 missing-features)
-           (setq features (append missing-features features))))))))
+  (el-get-with-status-sources package-status-alist
+    (let* ((all-features features)
+           (package-features (el-get-package-features package))
+           (package-files (el-get-package-files package))
+           (other-features
+            (remove-if (lambda (x) (memq x package-features)) all-features)))
+      (unwind-protect
+          (progn
+            ;; We cannot let-bind `features' here, becauses the changes
+            ;; made by `el-get-init' must persist.
+            (setq features other-features)
+            ;; Reload all loaded files in package dir if they still
+            ;; exist.
+            (loop for file in package-files
+                  ;; We convert errors to warnings here, because some
+                  ;; files don't like being loaded more than once in a
+                  ;; session. Example: "cedet-remove-builtin.el" from
+                  ;; CEDET.
+                  do (condition-case e
+                         (load file 'noerror)
+                       (error (warn "Error while reloading file %s in package %s: %S\n\n This package may require a restart of emacs to complete the update process."
+                                    file package (cdr e)))))
+            ;; Redo package initialization
+            (el-get-init package package-status-alist)
+            ;; Reload all features provided by the package. This ensures
+            ;; that autoloaded packages (which normally don't load
+            ;; anything until one of their entry points is called) are
+            ;; forced to reload immediately if they were already loaded.
+            (loop for f in package-features
+                  do (require f nil 'noerror)))
+        ;; We have to add all the removed features back in no matter
+        ;; what, or else we would be lying about what has been loaded.
+        ;; This covers the corner case where an updated package no
+        ;; longer provides a certain feature. Technically that feature
+        ;; is still provided, so not adding it back would be wrong.
+        (let ((missing-features
+               (remove-if (lambda (x) (memq x features)) package-features)))
+          (when missing-features
+            (warn "Adding %S back onto features, because the reloaded package did not provide them."
+                  missing-features)
+            (setq features (append missing-features features))))))))
 
 (defun el-get-post-update-build (package)
   "Function to call after building the package while updating it."
@@ -818,7 +837,7 @@ itself.")
     (run-hook-with-args hooks package)
     (run-hook-with-args 'el-get-post-remove-hooks package)))
 
-(defun el-get-remove (package)
+(defun el-get-remove (package &optional package-status-alist)
   "Remove any PACKAGE that is know to be installed or required."
   (interactive
    (list (el-get-read-package-with-status "Remove" "required" "installed")))
@@ -830,20 +849,20 @@ itself.")
   (let ((fallback-source
          (or (ignore-errors (el-get-package-def package))
              (list :name package :type 'builtin))))
-    (el-get-with-status-sources
-     (let* ((source   (or (ignore-errors (el-get-package-def package))
-                          fallback-source))
-            ;; Put the fallback source into `el-get-sources' so that
-            ;; other functions will pick it up.
-            (el-get-sources (cons source el-get-sources))
-            (method   (el-get-package-method source))
-            (remove   (el-get-method method :remove))
-            (url      (plist-get source :url)))
-     ;; remove the package now
-     (el-get-remove-autoloads package)
-     (funcall remove package url 'el-get-post-remove)
-     (el-get-save-package-status package "removed")
-     (message "el-get remove %s" package)))))
+    (el-get-with-status-sources package-status-alist
+      (let* ((source   (or (ignore-errors (el-get-package-def package))
+                           fallback-source))
+             ;; Put the fallback source into `el-get-sources' so that
+             ;; other functions will pick it up.
+             (el-get-sources (cons source el-get-sources))
+             (method   (el-get-package-method source))
+             (remove   (el-get-method method :remove))
+             (url      (plist-get source :url)))
+        ;; remove the package now
+        (el-get-remove-autoloads package)
+        (funcall remove package url 'el-get-post-remove)
+        (el-get-save-package-status package "removed")
+        (message "el-get remove %s" package)))))
 
 (defun el-get-reinstall (package)
   "Remove PACKAGE and then install it again."
@@ -886,22 +905,22 @@ entry which is not a symbol and is not already a known recipe."
   (dired dir))
 
 ;;;###autoload
-(defun el-get-checksum (package)
+(defun el-get-checksum (package &optional package-status-alist)
   "Compute the checksum of the given package, and put it in the kill-ring"
   (interactive
    (list (el-get-read-package-with-status "Checksum" "installed")))
-  (el-get-with-status-sources
-   (let* ((type             (el-get-package-type package))
-          (checksum         (plist-get (el-get-package-def package) :checksum))
-          (compute-checksum (el-get-method type :compute-checksum)))
-     (when (and checksum (not compute-checksum))
-       (error "package method %s does not support checksums" type))
-     (when compute-checksum
-       (let ((checksum (funcall compute-checksum package)))
-         (message "Checksum for package %s is: %s. It has been copied to the kill-ring."
-                  package checksum)
-         (kill-new checksum)
-         checksum)))))
+  (el-get-with-status-sources package-status-alist
+    (let* ((type             (el-get-package-type package))
+           (checksum         (plist-get (el-get-package-def package) :checksum))
+           (compute-checksum (el-get-method type :compute-checksum)))
+      (when (and checksum (not compute-checksum))
+        (error "package method %s does not support checksums" type))
+      (when compute-checksum
+        (let ((checksum (funcall compute-checksum package)))
+          (message "Checksum for package %s is: %s. It has been copied to the kill-ring."
+                   package checksum)
+          (kill-new checksum)
+          checksum)))))
 
 (defun el-get-self-checksum ()
   "Compute the checksum of the running version of el-get itself.
