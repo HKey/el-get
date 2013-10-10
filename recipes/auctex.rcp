@@ -7,7 +7,9 @@
        :build `(("./autogen.sh")
                 ("./configure"
                  "--without-texmf-dir"
-                 "--with-lispdir=`pwd`"
+                 ,(cond
+                   ((eq system-type 'darwin)  "--with-lispdir=`pwd`")
+                   (t ""))
                  ,(concat "--with-emacs=" el-get-emacs))
                 "make")
        :load-path ("." "preview")

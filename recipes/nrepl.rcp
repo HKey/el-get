@@ -2,4 +2,4 @@
        :description "An Emacs client for nREPL, the Clojure networked REPL server."
        :type github
        :pkgname "clojure-emacs/nrepl.el"
-       :depends clojure-mode)
+       :depends (dash clojure-mode pkg-info))
